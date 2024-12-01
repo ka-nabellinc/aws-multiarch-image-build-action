@@ -1,0 +1,140 @@
+name: Build and Push Multi-Arch Container Image
+
+on:
+  workflow_call:
+    inputs:
+      repo-url:
+        description: 'The full name of the Container image, including the registry and repository (e.g., docker.io/hoge/fuga).'
+        required: true
+        type: string
+      tag:
+        description: 'The tag to use for the Container image (e.g., latest, v1.0.0). This will help identify specific builds.'
+        required: true
+        type: string
+      labels:
+        description: 'Optional metadata labels to add to the Container image, formatted as key=value pairs.'
+        required: false
+        type: string
+      file:
+        description: 'The path to the Dockerfile that defines the image build process (e.g., hoge/Dockerfile.dev).'
+        required: true
+        type: string
+      platforms:
+        description: 'A JSON array defining the architectures and corresponding runner environments to build the image for (e.g., [{"arch": "amd64", "runner": "ubuntu-22.04"}, {"arch": "arm64", "runner": "ubuntu-22.04-arm64"}]).'
+        required: true
+        type: string
+      aws-region:
+        description: 'The AWS region where resources are located or operations will be performed (e.g., us-east-1).'
+        required: true
+        type: string
+      aws-access-key-id:
+        description: 'The AWS access key ID for authentication to perform actions in the specified AWS region.'
+        required: true
+        type: string
+      cache-from:
+        description: 'Optional cache source for the Docker build process, typically used to speed up rebuilds.'
+        required: false
+        type: string
+      cache-to:
+        description: 'Optional cache destination for the Docker build process, enabling reuse of intermediate layers.'
+        required: false
+        type: string
+    secrets:
+      build-args:
+        description: 'Optional build arguments passed to the Docker build process, formatted as key=value pairs.'
+        required: false
+      aws-secret-access-key:
+        description: 'The AWS secret access key used in conjunction with the AWS access key ID for authentication.'
+        required: true
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include: ${{ fromJson(inputs.platforms) }}
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ inputs.aws-access-key-id }}
+          aws-secret-access-key: ${{ secrets.aws-secret-access-key }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.repo-url }}
+
+      - name: Set Image Metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ inputs.repo-url }}
+          tags: |
+            type=raw,value=${{ inputs.tag }}-${{ matrix.arch }}
+          labels: ${{ inputs.labels }}
+
+      - name: Build and Push Image for ${{ matrix.arch }}
+        uses: docker/build-push-action@v6
+        with:
+          file: ${{ inputs.file }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          builder: default
+          platforms: linux/${{ matrix.arch }}
+          build-args: ${{ secrets.build-args }}
+          cache-from: ${{ inputs.cache-from }}
+          cache-to: ${{ inputs.cache-to }}
+
+  manifest:
+    needs: build
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ inputs.aws-access-key-id }}
+          aws-secret-access-key: ${{ secrets.aws-secret-access-key }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Login to Docker Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.repo-url }}
+
+      - name: Create and Push Manifest
+        env:
+          IMAGE_NAME: ${{ inputs.repo-url }}
+          TAG: ${{ inputs.tag }}
+          PLATFORMS: ${{ inputs.platforms }}
+        run: |
+          #!/bin/bash
+          set -e
+
+          # Parse JSON array to extract list of architectures
+          ARCHS=$(echo "${PLATFORMS}" | jq -r '.[] | .arch')
+
+          # Collect tagged images
+          TAGGED_IMAGES=""
+          for ARCH in ${ARCHS}; do
+            TAGGED_IMAGES="$TAGGED_IMAGES ${IMAGE_NAME}:${TAG}-${ARCH}"
+          done
+
+          # Create manifest
+          docker manifest create ${IMAGE_NAME}:${TAG} ${TAGGED_IMAGES}
+
+          # Add details for each architecture
+          for ARCH in ${ARCHS}; do
+            docker manifest annotate ${IMAGE_NAME}:${TAG} \
+              ${IMAGE_NAME}:${TAG}-${ARCH} --os linux --arch ${ARCH}
+          done
+
+          # Push manifest
+          docker manifest push ${IMAGE_NAME}:${TAG}
