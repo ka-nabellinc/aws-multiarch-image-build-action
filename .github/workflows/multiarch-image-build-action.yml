@@ -7,8 +7,8 @@ on:
         description: 'The full name of the Container image, including the registry and repository (e.g., docker.io/hoge/fuga).'
         required: true
         type: string
-      tag:
-        description: 'The tag to use for the Container image (e.g., latest, v1.0.0). This will help identify specific builds.'
+      tags:
+        description: 'The tags to use for the Container image (e.g., ["latest", "v1.0.0"]). This will help identify specific builds.'
         required: true
         type: string
       labels:
@@ -70,14 +70,22 @@ jobs:
         with:
           registry: ${{ inputs.repo-url }}
 
+      - name: Build list of additional tags
+        id: additional-tags
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.setOutput('tags', ${{ inputs.tags }}
+              .map(v => `type=raw,suffix=-${{ matrix.arch }},value=${v}`)
+              .join("\n"))
+
       - name: Set Image Metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ inputs.repo-url }}
           tags: |
-            type=raw,value=${{ inputs.tag }}-${{ matrix.arch }}
-            type=raw,value=latest
+            ${{ steps.additional-tags.outputs.tags }}
           labels: ${{ inputs.labels }}
 
       - name: Build and Push Image for ${{ matrix.arch }}
@@ -113,7 +121,7 @@ jobs:
       - name: Create and Push Manifest
         env:
           IMAGE_NAME: ${{ inputs.repo-url }}
-          TAG: ${{ inputs.tag }}
+          TAGS: ${{ inputs.tags }}
           PLATFORMS: ${{ inputs.platforms }}
         run: |
           #!/bin/bash
@@ -122,20 +130,21 @@ jobs:
           # Parse JSON array to extract list of architectures
           ARCHS=$(echo "${PLATFORMS}" | jq -r '.[] | .arch')
 
-          # Collect tagged images
-          TAGGED_IMAGES=""
-          for ARCH in ${ARCHS}; do
-            TAGGED_IMAGES="$TAGGED_IMAGES ${IMAGE_NAME}:${TAG}-${ARCH}"
+          # Parse JSON array of tags
+          ALL_TAGS=$(echo "${TAGS}" | jq -r '.[]')
+
+          for TAG in ${ALL_TAGS}; do
+            TAGGED_IMAGES=""
+            for ARCH in ${ARCHS}; do
+              TAGGED_IMAGES="$TAGGED_IMAGES ${IMAGE_NAME}:${TAG}-${ARCH}"
+            done
+
+            docker manifest create ${IMAGE_NAME}:${TAG} ${TAGGED_IMAGES}
+
+            for ARCH in ${ARCHS}; do
+              docker manifest annotate ${IMAGE_NAME}:${TAG} \
+                ${IMAGE_NAME}:${TAG}-${ARCH} --os linux --arch ${ARCH}
+            done
+
+            docker manifest push ${IMAGE_NAME}:${TAG}
           done
-
-          # Create manifest
-          docker manifest create ${IMAGE_NAME}:${TAG} ${TAGGED_IMAGES}
-
-          # Add details for each architecture
-          for ARCH in ${ARCHS}; do
-            docker manifest annotate ${IMAGE_NAME}:${TAG} \
-              ${IMAGE_NAME}:${TAG}-${ARCH} --os linux --arch ${ARCH}
-          done
-
-          # Push manifest
-          docker manifest push ${IMAGE_NAME}:${TAG}
