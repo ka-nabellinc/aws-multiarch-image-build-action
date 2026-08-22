@@ -47,12 +47,12 @@ jobs:
       aws-secret-access-key: <AWS_SECRET_ACCESS_KEY>
       build-args: |
         SENTRY_RELEASE=${{ github.sha }}
-      build-secrets: |
+      secrets: |
         GITHUB_TOKEN=${{ secrets.ORGANIZATION_TOKEN }}
         SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
 ```
 
-`build-args`はrelease IDなど、imageの履歴に残っても問題ない値に使用します。npm packageの取得に使う`GITHUB_TOKEN`やsource mapのuploadに使う`SENTRY_AUTH_TOKEN`は、`build-secrets`でDocker BuildKitへ渡してください。Dockerfileでは、tokenが必要なコマンドにだけsecretをmountします。
+`build-args`はrelease IDなど、imageの履歴に残っても問題ない値に使用します。npm packageの取得に使う`GITHUB_TOKEN`やsource mapのuploadに使う`SENTRY_AUTH_TOKEN`は、呼び出し側の`secrets.secrets`へ指定してDocker BuildKitへ渡してください。外側の`secrets`はreusable workflowへsecretを渡すGitHub Actionsの構文で、内側の`secrets`がDocker build用の値です。Dockerfileでは、tokenが必要なコマンドにだけsecretをmountします。
 
 ```dockerfile
 # syntax=docker/dockerfile:1

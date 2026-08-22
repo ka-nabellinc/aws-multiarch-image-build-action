@@ -43,7 +43,7 @@ on:
       build-args:
         description: 'Optional build arguments passed to the Docker build process, formatted as key=value pairs.'
         required: false
-      build-secrets:
+      secrets:
         description: 'Optional secrets mounted only while Dockerfile RUN instructions execute, formatted as key=value pairs.'
         required: false
       aws-secret-access-key:
@@ -101,7 +101,7 @@ jobs:
           builder: default
           platforms: linux/${{ matrix.arch }}
           build-args: ${{ secrets.build-args }}
-          secrets: ${{ secrets.build-secrets }}
+          secrets: ${{ secrets.secrets }}
           cache-from: ${{ inputs.cache-from }}
           cache-to: ${{ inputs.cache-to }}
           provenance: false
