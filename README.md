@@ -31,7 +31,8 @@ jobs:
     uses: ka-nabellinc/aws-multiarch-image-build-action/.github/workflows/multiarch-image-build-action.yml@main
     with:
       repo-url: <AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/<your-repo>
-      tag: latest
+      tags: |
+        ["${{ github.sha }}", "latest"]
       file: ./Dockerfile
       aws-region: ap-northeast-1
       aws-access-key-id: <AWS_ACCESS_KEY_ID>
@@ -45,7 +46,18 @@ jobs:
     secrets:
       aws-secret-access-key: <AWS_SECRET_ACCESS_KEY>
       build-args: |
-        HOGE=FUGA
+        SENTRY_RELEASE=${{ github.sha }}
+      build-secrets: |
+        GITHUB_TOKEN=${{ secrets.ORGANIZATION_TOKEN }}
+        SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
+```
+
+`build-args`はrelease IDなど、imageの履歴に残っても問題ない値に使用します。npm packageの取得に使う`GITHUB_TOKEN`やsource mapのuploadに使う`SENTRY_AUTH_TOKEN`は、`build-secrets`でDocker BuildKitへ渡してください。Dockerfileでは、tokenが必要なコマンドにだけsecretをmountします。
+
+```dockerfile
+# syntax=docker/dockerfile:1
+RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN,required=true \
+    yarn install --frozen-lockfile
 ```
 
 ## Contributing
