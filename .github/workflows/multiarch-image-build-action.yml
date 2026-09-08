@@ -39,6 +39,11 @@ on:
         description: 'Optional cache destination for the Docker build process, enabling reuse of intermediate layers.'
         required: false
         type: string
+      manifest-runner:
+        description: 'Runner label for the job that assembles and pushes the multi-arch manifest (e.g., ubuntu-24.04).'
+        required: false
+        type: string
+        default: 'ubuntu-24.04'
     secrets:
       build-args:
         description: 'Optional build arguments passed to the Docker build process, formatted as key=value pairs.'
@@ -109,7 +114,7 @@ jobs:
 
   manifest:
     needs: build
-    runs-on: ubuntu-24.04
+    runs-on: ${{ inputs.manifest-runner }}
 
     steps:
       - name: Configure AWS Credentials

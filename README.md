@@ -43,6 +43,7 @@ jobs:
         ]
       cache-from: type=registry,ref=<AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/<your-repo>:latest
       cache-to: type=inline
+      manifest-runner: ubuntu-24.04  # optional; runner for the manifest job (default: ubuntu-24.04)
     secrets:
       aws-secret-access-key: <AWS_SECRET_ACCESS_KEY>
       build-args: |
@@ -50,6 +51,8 @@ jobs:
       secrets: |
         NPM_TOKEN=${{ secrets.NPM_TOKEN }}
 ```
+
+Each entry in `platforms` builds on its own runner, so any runner label your organization can use is accepted there. `manifest-runner` selects the runner for the job that assembles and pushes the multi-arch manifest and defaults to `ubuntu-24.04`.
 
 `build-args`はimage versionなど、imageの履歴に残っても問題ない値に使用します。private npm packageの取得に使う`NPM_TOKEN`は、呼び出し側の`secrets.secrets`へ指定してDocker BuildKitへ渡してください。外側の`secrets`はreusable workflowへsecretを渡すGitHub Actionsの構文で、内側の`secrets`がDocker build用の値です。Dockerfileでは、tokenが必要なコマンドにだけsecretをmountします。
 
