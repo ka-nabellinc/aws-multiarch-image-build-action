@@ -28,6 +28,9 @@ on:
 
 jobs:
   build-and-push:
+    permissions:
+      contents: read
+      id-token: write  # required to assume the role through GitHub OIDC
     uses: ka-nabellinc/aws-multiarch-image-build-action/.github/workflows/multiarch-image-build-action.yml@main
     with:
       repo-url: <AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/<your-repo>
@@ -35,7 +38,7 @@ jobs:
         ["${{ github.sha }}", "latest"]
       file: ./Dockerfile
       aws-region: ap-northeast-1
-      aws-access-key-id: <AWS_ACCESS_KEY_ID>
+      role-to-assume: arn:aws:iam::<AWS_ACCOUNT_ID>:role/<your-role>
       platforms: |
         [
           {"arch": "amd64", "runner": "ubuntu-22.04"},
@@ -45,12 +48,13 @@ jobs:
       cache-to: type=inline
       manifest-runner: ubuntu-24.04  # optional; runner for the manifest job (default: ubuntu-24.04)
     secrets:
-      aws-secret-access-key: <AWS_SECRET_ACCESS_KEY>
       build-args: |
         IMAGE_VERSION=${{ github.sha }}
       secrets: |
         NPM_TOKEN=${{ secrets.NPM_TOKEN }}
 ```
+
+AWS authentication uses GitHub OIDC only. `role-to-assume` is the ARN of an IAM role that trusts `token.actions.githubusercontent.com` for the calling repository and can push to the ECR repository. A called workflow can't hold more token permissions than its caller, so the calling job must grant `id-token: write` as shown above.
 
 Each entry in `platforms` builds on its own runner, so any runner label your organization can use is accepted there. `manifest-runner` selects the runner for the job that assembles and pushes the multi-arch manifest and defaults to `ubuntu-24.04`.
 

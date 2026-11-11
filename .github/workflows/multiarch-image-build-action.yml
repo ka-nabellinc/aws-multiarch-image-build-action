@@ -27,8 +27,8 @@ on:
         description: 'The AWS region where resources are located or operations will be performed (e.g., us-east-1).'
         required: true
         type: string
-      aws-access-key-id:
-        description: 'The AWS access key ID for authentication to perform actions in the specified AWS region.'
+      role-to-assume:
+        description: 'The ARN of the IAM role assumed through GitHub OIDC to push to ECR. The calling job must grant `id-token: write`.'
         required: true
         type: string
       cache-from:
@@ -51,9 +51,6 @@ on:
       secrets:
         description: 'Optional secrets mounted only while Dockerfile RUN instructions execute, formatted as key=value pairs.'
         required: false
-      aws-secret-access-key:
-        description: 'The AWS secret access key used in conjunction with the AWS access key ID for authentication.'
-        required: true
 
 jobs:
   build:
@@ -61,6 +58,9 @@ jobs:
       matrix:
         include: ${{ fromJson(inputs.platforms) }}
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - name: Checkout Repository
@@ -69,8 +69,7 @@ jobs:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:
-          aws-access-key-id: ${{ inputs.aws-access-key-id }}
-          aws-secret-access-key: ${{ secrets.aws-secret-access-key }}
+          role-to-assume: ${{ inputs.role-to-assume }}
           aws-region: ${{ inputs.aws-region }}
 
       - name: Login to Container Registry
@@ -115,13 +114,15 @@ jobs:
   manifest:
     needs: build
     runs-on: ${{ inputs.manifest-runner }}
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:
-          aws-access-key-id: ${{ inputs.aws-access-key-id }}
-          aws-secret-access-key: ${{ secrets.aws-secret-access-key }}
+          role-to-assume: ${{ inputs.role-to-assume }}
           aws-region: ${{ inputs.aws-region }}
 
       - name: Login to Docker Registry
